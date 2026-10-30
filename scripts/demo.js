@@ -8,9 +8,14 @@ import {
   findBookingByReference,
   joinWaitlist,
   getTier,
+  publishEvent,
+  unpublishEvent,
+  listEventSummaries,
 } from "../src/domain/inventory.js";
+import { searchEvents } from "../src/domain/eventSearch.js";
 
-const money = (cents) => `$${(cents / 100).toFixed(2)}`;
+// Prices are stored as whole kobo (priceCents field). 100 kobo = 1 naira.
+const money = (kobo) => `₦${(kobo / 100).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
 const heading = (text) => console.log(`\n=== ${text} ===`);
 const say = (text) => console.log(`  ${text}`);
 
@@ -32,11 +37,23 @@ const seats = () => {
   return `${t.sold} sold, ${t.available} left, ${t.waitlistSize} waiting`;
 };
 
-heading("1. An organiser sets up an event");
-const event = createEvent(store, { name: "Harbour Rock Night", startsAt: "2027-03-20T19:00:00Z", location: "Harbour Hall" });
-general = addTier(store, event.id, { name: "General", priceCents: 5000, capacity: 5 });
-say(`Event: ${event.name} at ${event.location}`);
+heading("1. An organiser sets up an event (it starts as a DRAFT)");
+const event = createEvent(store, {
+  title: "Harbour Rock Night",
+  city: "Lagos",
+  venue: "Harbour Hall",
+  startsAt: "2027-03-20T19:00:00Z",
+});
+say(`Event: ${event.title} at ${event.venue}, ${event.city}  [${event.status}]`);
+say(`Public list now: ${listEventSummaries(store).length} event(s)`);
+attempt("Publish with no ticket tiers", () => publishEvent(store, event.id));
+attempt("Create an event on 30 February", () =>
+  createEvent(store, { title: "Ghost Show", city: "Lagos", venue: "Nowhere", startsAt: "2027-02-30" }),
+);
+general = addTier(store, event.id, { name: "General", priceCents: 500000, capacity: 5 });
 say(`Tier:  ${general.name}, ${money(general.priceCents)} each, ${general.capacity} seats`);
+const published = publishEvent(store, event.id);
+say(`Published -> status ${published.status}. Public list now: ${listEventSummaries(store).length} event(s)`);
 
 heading("2. The event sells out");
 const alice = bookTickets(store, { tierId: general.id, quantity: 3, customerName: "Alice" });
@@ -67,5 +84,41 @@ say(`Now: ${seats()}`);
 
 heading("7. Cancelling twice is an error");
 attempt("Alice cancels again", () => cancelBooking(store, alice.reference));
+
+heading("8. Attendees search, filter and sort published events");
+function addPublished(fields, tier) {
+  const e = createEvent(store, fields);
+  addTier(store, e.id, tier);
+  return publishEvent(store, e.id);
+}
+addPublished(
+  { title: "Abuja Jazz Night", city: "Abuja", venue: "Transcorp Hall", startsAt: "2027-03-20T18:00:00Z" },
+  { name: "General", priceCents: 300000, capacity: 200 },
+);
+addPublished(
+  { title: "Lagos Tech Meetup", city: "Lagos", venue: "Landmark Centre", startsAt: "2027-02-10T10:00:00Z" },
+  { name: "Standard", priceCents: 1000000, capacity: 80 },
+);
+createEvent(store, { title: "Secret Draft Party", city: "Lagos", venue: "TBA", startsAt: "2027-05-01T20:00:00Z" });
+
+const showList = (label, list) => {
+  say(`${label}:`);
+  if (list.length === 0) say("   (nothing)");
+  for (const e of list) {
+    say(`   - ${e.title} | ${e.city} | ${e.startsAt.slice(0, 10)} | from ${e.minPriceCents === null ? "n/a" : money(e.minPriceCents)} | ${e.seatsAvailable} seats`);
+  }
+};
+const all = listEventSummaries(store); // public events only: the draft is hidden
+showList("All public events, by date", searchEvents(all, {}, "date"));
+showList('Search "JAZZ"', searchEvents(all, { q: "JAZZ" }));
+showList('City "lagos", cheapest first', searchEvents(all, { city: "lagos" }, "price"));
+showList(`Max price ${money(500000)}, cheapest first`, searchEvents(all, { maxPriceCents: 500000 }, "price"));
+showList("Up to 2027-03-20 (whole day included), by date", searchEvents(all, { to: "2027-03-20" }, "date"));
+attempt("Sort by popularity", () => searchEvents(all, {}, "popularity"));
+say(`The original list still has ${all.length} events (search never changes it)`);
+
+heading("9. Unpublish takes an event off the public list");
+unpublishEvent(store, event.id);
+say(`Public list now: ${listEventSummaries(store).length} event(s)`);
 
 console.log("\nDone.");
