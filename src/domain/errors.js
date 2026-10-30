@@ -3,6 +3,7 @@ export const ErrorCode = Object.freeze({
   NOT_FOUND: "NOT_FOUND", // the thing you referred to does not exist
   SOLD_OUT: "SOLD_OUT", // not enough seats left
   CONFLICT: "CONFLICT", // the action clashes with current state (e.g. cancelling twice)
+  INVALID_STATE: "INVALID_STATE"
 });
 
 export class DomainError extends Error {

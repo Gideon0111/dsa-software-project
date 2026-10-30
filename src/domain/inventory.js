@@ -1,12 +1,19 @@
 import { DomainError, ErrorCode } from "./errors.js";
 import { newId, newReference, normalizeReference } from "./ids.js";
+import { parseRealDate } from "./dates.js";
 import { Queue } from "./waitlistQueue.js";
 
 export const MIN_TICKETS_PER_BOOKING = 1;
 export const MAX_TICKETS_PER_BOOKING = 10;
 const MAX_REFERENCE_ATTEMPTS = 10;
 
+export const EventStatus = Object.freeze({
+  DRAFT: "DRAFT",
+  PUBLISHED: "PUBLISHED",
+});
+
 export const BookingStatus = Object.freeze({
+  PENDING: "PENDING", // seats held, not paid yet
   CONFIRMED: "CONFIRMED",
   CANCELLED: "CANCELLED",
 });
@@ -30,12 +37,7 @@ function requireInteger(value, field, { min, max = Number.MAX_SAFE_INTEGER }) {
 }
 
 function requireIsoDate(value, field) {
-  if (typeof value !== "string" && !(value instanceof Date)) {
-    throw invalid(field, "must be an ISO date string or a Date");
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) throw invalid(field, "is not a valid date");
-  return date.toISOString();
+  return new Date(parseRealDate(value, field)).toISOString();
 }
 
 function requireStore(store) {
@@ -44,7 +46,15 @@ function requireStore(store) {
   if (!ok) throw invalid("store", "must come from createStore()");
 }
 
-const eventView = (e) => ({ id: e.id, name: e.name, startsAt: e.startsAt, location: e.location, tierIds: [...e.tierIds] });
+const eventView = (e) => ({
+  id: e.id,
+  title: e.title,
+  city: e.city,
+  venue: e.venue,
+  startsAt: e.startsAt,
+  status: e.status,
+  tierIds: [...e.tierIds],
+});
 
 const tierView = (t) => ({
   id: t.id,
@@ -59,12 +69,11 @@ const tierView = (t) => ({
 
 const bookingView = (b) => ({ ...b });
 
-/** One Map per kind of record: every lookup by id or reference is O(1). */
 export function createStore() {
   return {
-    events: new Map(), // eventId -> event record
-    tiers: new Map(), // tierId -> tier record (holds its own waitlist)
-    bookings: new Map(), // reference -> booking record
+    events: new Map(),  
+    tiers: new Map(), 
+    bookings: new Map(), 
   };
 }
 
@@ -99,17 +108,77 @@ export function getTier(store, tierId) {
   return tierView(requireTier(store, tierId));
 }
 
-export function createEvent(store, { name, startsAt, location } = {}) {
+/** New events always start as DRAFT, so they are not on the public list. */
+export function createEvent(store, { title, city, venue, startsAt } = {}) {
   requireStore(store);
   const event = {
     id: newId(),
-    name: requireText(name, "name"),
+    title: requireText(title, "title"),
+    city: requireText(city, "city"),
+    venue: requireText(venue, "venue"),
     startsAt: requireIsoDate(startsAt, "startsAt"),
-    location: requireText(location, "location"),
+    status: EventStatus.DRAFT,
     tierIds: [],
   };
   store.events.set(event.id, event);
   return eventView(event);
+}
+
+/** DRAFT -> PUBLISHED. An event needs at least one ticket tier first. */
+export function publishEvent(store, eventId) {
+  requireStore(store);
+  const event = requireEvent(store, eventId);
+  if (event.status === EventStatus.PUBLISHED) {
+    throw new DomainError(ErrorCode.INVALID_STATE, "Event is already published", { eventId: event.id });
+  }
+  if (event.tierIds.length === 0) {
+    throw new DomainError(ErrorCode.INVALID_STATE, "Add at least one ticket tier before publishing", {
+      eventId: event.id,
+    });
+  }
+  event.status = EventStatus.PUBLISHED;
+  return eventView(event);
+}
+
+/** PUBLISHED -> DRAFT. The event leaves the public list. */
+export function unpublishEvent(store, eventId) {
+  requireStore(store);
+  const event = requireEvent(store, eventId);
+  if (event.status !== EventStatus.PUBLISHED) {
+    throw new DomainError(ErrorCode.INVALID_STATE, "Only a published event can be unpublished", {
+      eventId: event.id,
+    });
+  }
+  event.status = EventStatus.DRAFT;
+  return eventView(event);
+}
+
+export function listEventSummaries(store, { publishedOnly = true } = {}) {
+  requireStore(store);
+  if (typeof publishedOnly !== "boolean") throw invalid("publishedOnly", "must be true or false");
+  const rows = [];
+  for (const event of store.events.values()) {
+    if (publishedOnly && event.status !== EventStatus.PUBLISHED) continue;
+    let minPriceCents = null; // null = no tiers, so no price
+    let seatsAvailable = 0;
+    for (const tierId of event.tierIds) {
+      const tier = store.tiers.get(tierId);
+      if (minPriceCents === null || tier.priceCents < minPriceCents) minPriceCents = tier.priceCents;
+      seatsAvailable += tier.capacity - tier.sold;
+    }
+    rows.push({
+      id: event.id,
+      title: event.title,
+      city: event.city,
+      venue: event.venue,
+      startsAt: event.startsAt,
+      status: event.status,
+      minPriceCents,
+      seatsAvailable,
+      tierCount: event.tierIds.length,
+    });
+  }
+  return rows;
 }
 
 export function addTier(store, eventId, { name, priceCents, capacity } = {}) {
@@ -175,7 +244,7 @@ export function bookTickets(store, { tierId, quantity, customerName } = {}) {
     customerName: buyer,
     quantity: count,
     totalCents,
-    status: BookingStatus.CONFIRMED,
+    status: BookingStatus.PENDING,
     createdAt: new Date().toISOString(),
     cancelledAt: null,
   };
