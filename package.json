@@ -12,6 +12,7 @@
   "scripts": {
     "demo": "node scripts/demo.js",
     "benchmark": "node scripts/benchmark-lookup.js",
+    "start": "node src/server.js",
     "test": "node --test \"test/**/*.test.js\"",
     "coverage": "node --test --experimental-test-coverage"
   },

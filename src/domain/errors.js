@@ -2,8 +2,9 @@ export const ErrorCode = Object.freeze({
   VALIDATION: "VALIDATION", // input is malformed or out of range
   NOT_FOUND: "NOT_FOUND", // the thing you referred to does not exist
   SOLD_OUT: "SOLD_OUT", // not enough seats left
-  CONFLICT: "CONFLICT", // the action clashes with current state (e.g. cancelling twice)
-  INVALID_STATE: "INVALID_STATE"
+  CONFLICT: "CONFLICT", // the action clashes with current state (e.g. a duplicate tier name)
+  INVALID_STATE: "INVALID_STATE",
+  INVALID_TRANSITION: "INVALID_TRANSITION" // a booking was asked to make a move the state machine does not allow
 });
 
 export class DomainError extends Error {

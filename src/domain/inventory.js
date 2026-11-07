@@ -2,6 +2,7 @@ import { DomainError, ErrorCode } from "./errors.js";
 import { newId, newReference, normalizeReference } from "./ids.js";
 import { parseRealDate } from "./dates.js";
 import { Queue } from "./waitlistQueue.js";
+import { BookingState, assertTransition } from "./bookingStateMachine.js";
 
 export const MIN_TICKETS_PER_BOOKING = 1;
 export const MAX_TICKETS_PER_BOOKING = 10;
@@ -12,11 +13,7 @@ export const EventStatus = Object.freeze({
   PUBLISHED: "PUBLISHED",
 });
 
-export const BookingStatus = Object.freeze({
-  PENDING: "PENDING", // seats held, not paid yet
-  CONFIRMED: "CONFIRMED",
-  CANCELLED: "CANCELLED",
-});
+export const BookingStatus = BookingState;
 
 function invalid(field, message) {
   return new DomainError(ErrorCode.VALIDATION, `${field}: ${message}`, { field });
@@ -256,11 +253,7 @@ export function bookTickets(store, { tierId, quantity, customerName } = {}) {
 export function cancelBooking(store, reference) {
   requireStore(store);
   const booking = requireBookingRecord(store, reference);
-  if (booking.status === BookingStatus.CANCELLED) {
-    throw new DomainError(ErrorCode.CONFLICT, `Booking ${booking.reference} is already cancelled`, {
-      reference: booking.reference,
-    });
-  }
+  assertTransition(booking.status, BookingStatus.CANCELLED);
 
   const tier = store.tiers.get(booking.tierId);
   booking.status = BookingStatus.CANCELLED;
