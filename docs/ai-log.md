@@ -50,3 +50,47 @@
 | Date-only `to` filter | Means the whole day, in UTC |
 | Price filters and events with no tiers | Left out of price filters; last in price sort |
 | Cheapest price of an event | Lowest tier price, counting every tier |
+
+
+## Build 3: log
+## AI-B3-01: architecture doc and booking state machine
+
+- **What I asked:** Build 3 items 1 and 2 of the prompt in docs/build-3.md: `docs/architecture.md` with three Mermaid diagrams, and `src/domain/bookingStateMachine.js` with `canTransition` and `assertTransition`.
+- **What came back:** the architecture doc, the state machine (five states, allowed moves kept as data), and a test file that checks all 5 allowed and all 20 refused pairs.
+- **What was wrong:**
+  - The prompt says to throw a `DomainError` with code `INVALID_TRANSITION`, but `DomainError` throws a `TypeError` for any code that is not in `ErrorCode`. Followed literally, the state machine would have crashed with the wrong error.
+  - The first test run used `node --test test/`, which fails on Node 22 (`MODULE_NOT_FOUND`). The project's `npm test` uses a glob and works.
+- **What I changed:** added `INVALID_TRANSITION` to `ErrorCode` (one line, nothing rewritten). Later, a test (`httpErrors.test.js`) fails if any error code has no HTTP status, so a new code cannot be forgotten.
+- **Checked:** the three Mermaid diagrams parse with the real Mermaid parser. 
+
+## AI-B3-02: making inventory.js use the state machine
+
+- **What I asked:** to change `inventory.js` so bookings use the state machine. 
+- **What came back:** `BookingStatus` now points to the state machine's list; `cancelBooking` calls `assertTransition` instead of its own "already cancelled" check.
+- **What was wrong:**
+  - `inventory.js` had its own status list (`PENDING`, `CONFIRMED`, `CANCELLED`, uppercase) that did not match the spec (`pending`, `paid`, `cancelled`, `refunded`, `checked_in`). `CONFIRMED` was never used anywhere.
+  - Build 2 had **no tests for `cancelBooking`**, so a change in its behaviour (cancelling twice used to be `CONFLICT`, now `INVALID_TRANSITION`) would not have been caught.
+  - The first error message read badly: "A cancelled booking cannot become cancelled".
+- **What I changed:** added `test/cancelBooking.test.js` (7 tests, including "seats are released only once"); message is now "The booking is already cancelled"; fixed the comment; `inventory.test.js` now expects six error codes.
+
+## AI-B3-03: router, web server, static files, config (Steps 3 to 6)
+
+- **What I asked:** items 3, 4 and 5 of the prompt: a router with `:params`, a `node:http` server with `/health`, JSON errors and safe static files, `config.js`, `server.js`, a `start` script, and tests including one real HTTP request.
+- **What came back:** `src/http/router.js`, `errors.js`, `static.js`, `app.js`, `src/config.js`, `src/server.js`, `public/`, and 156 tests passing in total (the HTTP error file was renamed in Entry 4).
+- **What was wrong or risky:**
+  - Parsing the URL with `new URL(req.url, base)` is unsafe here: in Node 22, `new URL("//evil.com/secret", base)` reports host `evil.com` and path `/secret`. I checked this. The code splits the path by hand.
+  - The AI first claimed that reading the body with `for await` and stopping early would destroy the connection before the 413 reply. **I tested it** (20 requests each, with 120-byte and 5 MB bodies): both versions returned 413 every time. The claim was wrong. The event-based reader is kept because it works and is tested, but it is not proven necessary and could be simplified.
+  - All tests passed on the first run, so I broke the code on purpose four times (allow dot-names, skip the real-path check, decode twice, drop a status). The tests failed each time (3, 1, 1 and 3 failures). That showed the tests really check something.
+  - A bad-JSON 400 cannot be triggered on the real server yet, because no route accepts a body until Build 4. It is tested with a test route, and by `scripts/verify-build-3.js`.
+
+## AI-B3-04: review round (my questions and my own run of the verify script)
+
+- **What I asked:** why there are two error files (one in `src/domain/`, one in `src/http/`), why the 413 status was not in the HTTP error file, and I ran `node scripts/verify-build-3.js` on my own machine (Node 24.19.0).
+- **What was wrong:**
+  - **I noticed** the HTTP error file defined the error *codes* but not their status numbers. The numbers (400, 404, 405, 413) were typed in `app.js` and `static.js` next to each `throw`, so the HTTP errors were spread over three files, while the domain errors were in one table.
+  - **The verify script reported `npm test: 0 passed, 1 failed` on my machine** although the tests passed. The script read the test summary in the Node 22 format (`# pass 156`), but Node 24 prints `ℹ pass 156`, so it found no numbers and failed. The tests were fine; the AI's script was wrong. I would not have found this on Node 22.
+- **What I changed:**
+  - Renamed `src/http/errors.js` to `src/http/httpErrors.js`, so it is not confused with `src/domain/errors.js`. Domain errors describe business problems and know nothing about HTTP; HTTP errors describe web problems and translate domain errors into status numbers.
+  - Every HTTP error now lives in `httpErrors.js`: the codes, an `HTTP_STATUS` table, and one function per error (`badJson()`, `notFound()`, `methodNotAllowed()`, `payloadTooLarge()`...). `HttpError` now takes only a code, like `DomainError`, and gets its status from the table. `app.js` and `static.js` no longer contain an error status number.
+  - Added tests (169 in total): every `HttpCode` has a status, unknown codes are refused, each error function returns the right status. Added a verify check that only `httpErrors.js` may call `new HttpError(`.
+  - The verify script now accepts both summary formats and trusts the exit code first. I checked it on Node 22.22 and Node 24.19: 169 tests pass and 40 of 40 checks pass on both.
