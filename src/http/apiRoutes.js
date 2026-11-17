@@ -1,0 +1,70 @@
+import { authenticate } from "../lib/auth.js";
+
+/**
+ * Registers all Build 4 REST API routes on the router.
+ * Every handler returns { status?, body? } or throws; app.js turns errors into
+ * the standard {"error":{"code","message"}} JSON shape.
+ */
+export function registerApiRoutes(router, eventService, bookingService) {
+  // ── Events ──
+  router.post("/api/events", async ({ req, body }) => {
+    authenticate(req);
+    const event = await eventService.createEvent(body);
+    return { status: 201, body: { event } };
+  });
+
+  router.post("/api/events/:id/tiers", async ({ req, params, body }) => {
+    authenticate(req);
+    const tier = await eventService.addTier(params.id, body);
+    return { status: 201, body: { tier } };
+  });
+
+  router.post("/api/events/:id/publish", async ({ req, params }) => {
+    authenticate(req);
+    const event = await eventService.publishEvent(params.id);
+    return { status: 200, body: { event } };
+  });
+
+  router.post("/api/events/:id/unpublish", async ({ req, params }) => {
+    authenticate(req);
+    const event = await eventService.unpublishEvent(params.id);
+    return { status: 200, body: { event } };
+  });
+
+  router.get("/api/events", async ({ query }) => {
+    const criteria = {};
+    if (query.has("q")) criteria.q = query.get("q");
+    if (query.has("city")) criteria.city = query.get("city");
+    if (query.has("from")) criteria.from = query.get("from");
+    if (query.has("to")) criteria.to = query.get("to");
+    if (query.has("maxPriceCents")) criteria.maxPriceCents = Number(query.get("maxPriceCents"));
+    if (query.get("onlyAvailable") === "true") criteria.onlyAvailable = true;
+    const sortBy = query.get("sortBy") || "date";
+    const events = await eventService.searchEvents(criteria, sortBy);
+    return { status: 200, body: { events } };
+  });
+
+  // ── Bookings ──
+  router.post("/api/bookings", async ({ req, body }) => {
+    authenticate(req);
+    const booking = await bookingService.bookTickets({
+      ...body,
+      userId: req.user.id,
+    });
+    return { status: 201, body: { booking } };
+  });
+
+  router.post("/api/bookings/:reference/pay", async ({ req, params, body }) => {
+    authenticate(req);
+    const booking = await bookingService.payBooking(params.reference, req.user.id, {
+      shouldDecline: body?.shouldDecline === true,
+    });
+    return { status: 200, body: { booking } };
+  });
+
+  router.post("/api/bookings/:reference/cancel", async ({ req, params }) => {
+    authenticate(req);
+    const result = await bookingService.cancelBooking(params.reference, req.user.id);
+    return { status: 200, body: result };
+  });
+}

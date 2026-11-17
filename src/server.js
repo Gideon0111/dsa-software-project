@@ -1,5 +1,10 @@
 import { loadConfig } from "./config.js";
 import { createApp } from "./http/app.js";
+import { createMemoryRepository } from "./repositories/memory.js";
+import { createEventService } from "./services/eventService.js";
+import { createBookingService } from "./services/bookingService.js";
+import { charge } from "./lib/mockPaymentGateway.js";
+import { registerApiRoutes } from "./http/apiRoutes.js";
 
 let config;
 try {
@@ -9,7 +14,17 @@ try {
   process.exit(1);
 }
 
-const server = createApp({ publicDir: config.publicDir, maxBodyBytes: config.maxBodyBytes });
+const repository = createMemoryRepository();
+const eventService = createEventService(repository);
+const bookingService = createBookingService(repository, { charge });
+
+const server = createApp({
+  publicDir: config.publicDir,
+  maxBodyBytes: config.maxBodyBytes,
+  registerRoutes(router) {
+    registerApiRoutes(router, eventService, bookingService);
+  },
+});
 
 server.on("error", (error) => {
   if (error.code === "EADDRINUSE") {
@@ -28,7 +43,7 @@ function shutdown(signal) {
   console.log(`\n${signal} received, shutting down...`);
   server.close(() => process.exit(0));
   server.closeIdleConnections();
-  setTimeout(() => process.exit(1), 10_000).unref(); // give up waiting after 10 seconds
+  setTimeout(() => process.exit(0), 10_000).unref(); // give up waiting after 10 seconds
 }
 process.on("SIGINT", () => shutdown("SIGINT"));
 process.on("SIGTERM", () => shutdown("SIGTERM"));

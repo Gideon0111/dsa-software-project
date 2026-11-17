@@ -100,6 +100,7 @@ describe("domain code -> HTTP status table", () => {
       CONFLICT: 409,
       INVALID_STATE: 409,
       INVALID_TRANSITION: 409,
+      PAYMENT_DECLINED: 402,
     });
   });
 });

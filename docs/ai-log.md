@@ -94,3 +94,51 @@
   - Every HTTP error now lives in `httpErrors.js`: the codes, an `HTTP_STATUS` table, and one function per error (`badJson()`, `notFound()`, `methodNotAllowed()`, `payloadTooLarge()`...). `HttpError` now takes only a code, like `DomainError`, and gets its status from the table. `app.js` and `static.js` no longer contain an error status number.
   - Added tests (169 in total): every `HttpCode` has a status, unknown codes are refused, each error function returns the right status. Added a verify check that only `httpErrors.js` may call `new HttpError(`.
   - The verify script now accepts both summary formats and trusts the exit code first. I checked it on Node 22.22 and Node 24.19: 169 tests pass and 40 of 40 checks pass on both.
+
+## Build 4: log
+### AI-B4-01: New domain code PAYMENT_DECLINED needed a home
+
+- **What I asked:** add a mock payment flow where a declined card leaves the booking pending, and the error must come back as 402.
+- **What was wrong:** `ErrorCode` had no `PAYMENT_DECLINED`, and `DOMAIN_STATUS` had no mapping for it. Since every domain code must have a mapped HTTP status (enforced by `httpErrors.test.js`), adding the code without the status would break tests.
+- **Fix:** added `PAYMENT_DECLINED` to `ErrorCode` and mapped it to `402` in `DOMAIN_STATUS`. Tests now pass for seven error codes.
+
+### AI-B4-02: Separating services from rules and data
+
+- **What I asked:** build the Build 4 REST API following the architecture layer rules — routes call services, services call rules and repositories, nothing calls upwards.
+- **What came back:** new layers `src/repositories/memory.js`, `src/services/eventService.js`, `src/services/bookingService.js`, `src/lib/mockPaymentGateway.js`, `src/lib/auth.js`, `src/http/apiRoutes.js`, plus `docs/api-examples.md` and `test/api.test.js`.
+- **What was wrong or risky:**
+  - The first draft of `bookingService.js` duplicated domain validation logic instead of reusing `src/domain/`. Fixed to call `assertTransition` from `bookingStateMachine.js` and `filterEvents`/`sortEvents` from `eventSearch.js`.
+  - `src/server.js` needed to wire up the new repository, services, and routes via the existing `registerRoutes` callback in `createApp` — no changes to `app.js` itself.
+- **What I changed:** `src/domain/errors.js` (added `PAYMENT_DECLINED`), `src/http/httpErrors.js` (mapped to 402), `src/server.js` (register API routes). All other existing files untouched.
+
+### AI-B4-03: Ownership check in one place
+
+- **What I asked:** a booking can only be paid by the person who made it, using `x-user-id` as a temporary stand-in for auth until Build 7.
+- **What came back:** `src/lib/auth.js` with `authenticate()` (reads `x-user-id`, sets `req.user`) and `assertOwnership()` (throws `INVALID_TRANSITION` if `booking.userId !== req.user.id`).
+- **Why:** keeping the ownership check in one helper means when real authentication arrives in Build 7, only `authenticate()` needs to change — the rest of the app keeps using `req.user.id`.
+
+### AI-B4-04: Unpublish endpoint added ahead of schedule
+
+- **What I asked:** Build 4 spec lists only `POST /api/events/:id/publish`, but S04 says "publish and unpublish". Added `POST /api/events/:id/unpublish` too since it reuses the same `unpublishEvent` service and breaks nothing.
+- **Note for future builds:** unpublish is delivered in Build 4 even though the user-story table lists it as Build 2 (rules) / 4 (API) / 7 (screen). This is fine — the API surface is complete now.
+
+## Build-4: optimization log
+### AI-B4-05: Extracted shared validation helpers into src/domain/validation.js
+
+- **What I asked:** eliminate duplicated `requireText`, `requireInteger`, `requireIsoDate` between `inventory.js` and `eventService.js`.
+- **What was wrong:** Both files defined identical validation helpers. Any bug fix or change would need to be applied in two places, creating risk.
+- **Fix:** Created `src/domain/validation.js` as the single source of truth. Both `inventory.js` and `eventService.js` now import from it. `bookingService.js` also uses it.
+
+### AI-B4-06: Fixed critical bugs found during review
+
+- **Wiring bug:** `server.js` passed `charge` (bare function) to `createBookingService`, but the service called `paymentGateway.charge()` → `charge.charge` was `undefined`, causing 500 on every payment. Fixed by passing `{ charge }`.
+- **Missing `assertTransition` import:** `bookingService.js` removed `assertTransition` from imports but still used it in `payBooking`, causing `ReferenceError`. Fixed by restoring the import.
+- **Paid bookings could be cancelled:** `cancelBooking` used `assertTransition` which allows `paid → cancelled`, but Build 4 spec says "unpaid bookings only". Fixed by adding an explicit `booking.status !== BookingState.PENDING` check before allowing cancellation.
+- **Lowercase references returned 404:** Services didn't normalize references before lookup. Fixed by calling `normalizeReference()` in `payBooking`, `cancelBooking`, and `createBooking`.
+- **Reference collision:** `bookings.set(reference, …)` could silently overwrite an existing booking. Fixed by adding a collision check loop in `bookTickets` and a `bookings.has()` guard in `repository.createBooking`.
+- **Repository `createTier` silently returned undefined for missing event:** Now throws `NOT_FOUND` like all other repository getters.
+
+### AI-B4-07: Added booking/pay/cancel API tests
+
+- **What was wrong:** `api.test.js` only covered events — no booking, pay, or cancel tests existed. This is why the `charge` wiring bug passed 185 green tests.
+- **Fix:** Rewrote `api.test.js` with 13 new tests covering booking creation, SOLD_OUT, invalid quantity, lowercase reference lookup, successful payment, double payment rejection, declined payment, ownership check, cancelled booking payment, unknown booking, cancel pending, cancel twice, cancel paid, and cancel unknown.

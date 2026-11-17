@@ -1,8 +1,5 @@
 import { DomainError, ErrorCode } from "../domain/errors.js";
 
-/* EVERY error the HTTP layer can produce lives in this file: its code, its status number */
-
-// ── 1. Problems that belong to HTTP itself ───────────────────────────────────
 export const HttpCode = Object.freeze({
   BAD_REQUEST: "BAD_REQUEST", // the request line could not be read
   BAD_JSON: "BAD_JSON", // the body is not valid JSON
@@ -21,7 +18,6 @@ export const HTTP_STATUS = Object.freeze({
   [HttpCode.INTERNAL]: 500,
 });
 
-// ── 2. HttpError, and one function per error ─────────────────────────────────
 export class HttpError extends Error {
   constructor(code, message, headers = {}) {
     if (!Object.hasOwn(HTTP_STATUS, code)) throw new TypeError(`Unknown HttpError code: ${code}`);
@@ -43,8 +39,7 @@ export const payloadTooLarge = () =>
   new HttpError(HttpCode.PAYLOAD_TOO_LARGE, "Request body is too large", { Connection: "close" });
 export const internalError = () => new HttpError(HttpCode.INTERNAL, "Something went wrong on our side");
 
-// ── 3. Business (domain) errors: code -> status ──────────────────────────────
-/**
+/*
  * A test checks that EVERY code in ErrorCode appears here, so adding a new domain
  * code without choosing its status fails the tests instead of becoming a 500.
  */
@@ -55,9 +50,9 @@ export const DOMAIN_STATUS = Object.freeze({
   [ErrorCode.CONFLICT]: 409,
   [ErrorCode.INVALID_STATE]: 409,
   [ErrorCode.INVALID_TRANSITION]: 409,
+  [ErrorCode.PAYMENT_DECLINED]: 402,
 });
 
-// ── 4. Any thrown value -> the one response shape ────────────────────────────
 const errorBody = (code, message) => ({ error: { code, message } });
 const fromHttpError = (e) => ({ status: e.status, headers: e.headers, body: errorBody(e.code, e.message) });
 

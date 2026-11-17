@@ -1,6 +1,6 @@
 import { DomainError, ErrorCode } from "./errors.js";
 import { newId, newReference, normalizeReference } from "./ids.js";
-import { parseRealDate } from "./dates.js";
+import { requireText, requireInteger, requireIsoDate } from "./validation.js";
 import { Queue } from "./waitlistQueue.js";
 import { BookingState, assertTransition } from "./bookingStateMachine.js";
 
@@ -15,32 +15,10 @@ export const EventStatus = Object.freeze({
 
 export const BookingStatus = BookingState;
 
-function invalid(field, message) {
-  return new DomainError(ErrorCode.VALIDATION, `${field}: ${message}`, { field });
-}
-
-function requireText(value, field) {
-  if (typeof value !== "string" || value.trim() === "") {
-    throw invalid(field, "must be a non-empty string");
-  }
-  return value.trim();
-}
-
-function requireInteger(value, field, { min, max = Number.MAX_SAFE_INTEGER }) {
-  if (!Number.isSafeInteger(value) || value < min || value > max) {
-    throw invalid(field, `must be a whole number from ${min} to ${max}`);
-  }
-  return value;
-}
-
-function requireIsoDate(value, field) {
-  return new Date(parseRealDate(value, field)).toISOString();
-}
-
 function requireStore(store) {
   const ok =
     store && store.events instanceof Map && store.tiers instanceof Map && store.bookings instanceof Map;
-  if (!ok) throw invalid("store", "must come from createStore()");
+  if (!ok) throw new DomainError(ErrorCode.VALIDATION, "store: must come from createStore()", { field: "store" });
 }
 
 const eventView = (e) => ({

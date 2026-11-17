@@ -147,8 +147,8 @@ describe("S06: book tickets", () => {
 });
 
 describe("DomainError", () => {
-  test("knows all six error codes and rejects unknown ones", () => {
-    for (const code of ["VALIDATION", "NOT_FOUND", "SOLD_OUT", "CONFLICT", "INVALID_STATE", "INVALID_TRANSITION"]) {
+  test("knows all seven error codes and rejects unknown ones", () => {
+    for (const code of ["VALIDATION", "NOT_FOUND", "SOLD_OUT", "CONFLICT", "INVALID_STATE", "INVALID_TRANSITION", "PAYMENT_DECLINED"]) {
       assert.equal(new DomainError(code, "x").code, code);
     }
     assert.throws(() => new DomainError("NOPE", "x"), TypeError);
