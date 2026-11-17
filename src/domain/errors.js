@@ -4,7 +4,8 @@ export const ErrorCode = Object.freeze({
   SOLD_OUT: "SOLD_OUT", // not enough seats left
   CONFLICT: "CONFLICT", // the action clashes with current state (e.g. a duplicate tier name)
   INVALID_STATE: "INVALID_STATE",
-  INVALID_TRANSITION: "INVALID_TRANSITION" // a booking was asked to make a move the state machine does not allow
+  INVALID_TRANSITION: "INVALID_TRANSITION", // a booking was asked to make a move the state machine does not allow
+  PAYMENT_DECLINED: "PAYMENT_DECLINED", // the mock payment card was declined
 });
 
 export class DomainError extends Error {
