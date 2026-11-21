@@ -142,3 +142,31 @@
 
 - **What was wrong:** `api.test.js` only covered events — no booking, pay, or cancel tests existed. This is why the `charge` wiring bug passed 185 green tests.
 - **Fix:** Rewrote `api.test.js` with 13 new tests covering booking creation, SOLD_OUT, invalid quantity, lowercase reference lookup, successful payment, double payment rejection, declined payment, ownership check, cancelled booking payment, unknown booking, cancel pending, cancel twice, cancel paid, and cancel unknown.
+
+## Build 5: SQLite and the overselling fix
+
+### AI-B5-01: SQLite schema and connection
+- **What I asked:** Create `src/db/schema.sql` and `src/db/connection.js` using `node:sqlite`. Tables for users, events, ticket_tiers and bookings, with PRIMARY KEY, FOREIGN KEY, UNIQUE and CHECK constraints including `CHECK (sold >= 0 AND sold <= capacity)`.
+- **What came back / issues found:**
+  - This Node 24.19.0 build exports only `DatabaseSync` from `node:sqlite` — there is no async `Database`. 
+  - `db.pragma()` is not available on `DatabaseSync` in this build; used `db.exec("PRAGMA foreign_keys = ON")` instead.
+- **Fix:** `src/db/schema.sql` with all four tables, PK/FK/UNIQUE/CHECK constraints. `src/db/connection.js` with `openDatabase`, `applySchema`, `createConnection`. Verified: CHECK constraint rejects `sold > capacity` and `sold < 0`; FK constraint rejects missing parent; atomic `UPDATE ... WHERE sold + ? <= capacity` returns `changes: 1` on win, `0` on over-capacity.
+
+### AI-B5-02: SQLite repository implementing the memory interface
+- **What I asked:** `src/repositories/sqlite.js` with the same methods as `memory.js` so services do not change. Every query uses `?` placeholders. Never build SQL by string concatenation.
+- **What came back / issues found:**
+  - `createBooking` reserves the seat with one atomic statement inside `BEGIN IMMEDIATE`/`COMMIT`. 
+- **Fix:** `src/repositories/sqlite.js` implements the full memory-repository interface. 
+
+### AI-B5-03: Seeding and persistent storage
+- **What I asked:** `scripts/seed.js` fills the database once; `seed` script in `package.json`; server keeps data after restart.
+- **Fix:** `scripts/seed.js` seeds a published event with a 1-seat tier (idempotent). Added `seed` and `oversell` scripts to `package.json`. Switched `src/server.js` from `createMemoryRepository` to `createSqliteRepository` with `DEFAULT_DB_PATH` (`data/ticketing.sqlite`), closing the DB on shutdown. Verified: server starts, serves seeded data, and data survives a restart.
+
+### AI-B5-04: Overselling demo and atomic fix
+- **What I asked:** `scripts/oversell-demo.js`: 1 seat, 50 attempts via `Promise.all`, show before/after. Fix overselling in the database with atomic `UPDATE ... WHERE sold + ? <= capacity`. 
+- **Fix:** Atomic seat reservation in `createBooking` inside a transaction.
+
+### AI-B5-05: Regression test
+- **What I asked:** `test/oversell.test.js`: 50 simultaneous bookings for 1 seat give exactly 1 success and 49 `SOLD_OUT`. The test must fail if the fix is removed.
+- **Verification:** Test passes with the fix (200/200 green). Temporarily removed the `AND sold + ? <= capacity` clause → both oversell tests fail (0 successes instead of 1, because all 50 get raw SQLite constraint errors instead of clean `SOLD_OUT`). Fix restored; tests pass again.
+- **Files:** `test/oversell.test.js`.

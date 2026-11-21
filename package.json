@@ -13,6 +13,8 @@
     "demo": "node scripts/demo.js",
     "benchmark": "node scripts/benchmark-lookup.js",
     "start": "node src/server.js",
+    "seed": "node scripts/seed.js",
+    "oversell": "node scripts/oversell-demo.js",
     "test": "node --test \"test/**/*.test.js\"",
     "coverage": "node --test --experimental-test-coverage"
   },
