@@ -1,6 +1,7 @@
 import { loadConfig } from "./config.js";
 import { createApp } from "./http/app.js";
-import { createMemoryRepository } from "./repositories/memory.js";
+import { createSqliteRepository } from "./repositories/sqlite.js";
+import { DEFAULT_DB_PATH } from "./db/connection.js";
 import { createEventService } from "./services/eventService.js";
 import { createBookingService } from "./services/bookingService.js";
 import { charge } from "./lib/mockPaymentGateway.js";
@@ -14,7 +15,7 @@ try {
   process.exit(1);
 }
 
-const repository = createMemoryRepository();
+const repository = createSqliteRepository(process.env.TICKETING_DB_PATH || DEFAULT_DB_PATH);
 const eventService = createEventService(repository);
 const bookingService = createBookingService(repository, { charge });
 
@@ -41,6 +42,7 @@ server.listen(config.port, () => {
 
 function shutdown(signal) {
   console.log(`\n${signal} received, shutting down...`);
+  repository.close();
   server.close(() => process.exit(0));
   server.closeIdleConnections();
   setTimeout(() => process.exit(0), 10_000).unref(); // give up waiting after 10 seconds
