@@ -14,6 +14,8 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const schemaSql = fs.readFileSync(path.join(__dirname, "..", "db", "schema.sql"), "utf8");
 
+const orNull = (value) => (value === undefined ? null : value);
+
 function notFound(kind, id) {
   throw new DomainError(ErrorCode.NOT_FOUND, `${kind} not found: ${id}`, { [kind]: id });
 }
@@ -76,8 +78,10 @@ export function createSqliteRepository(dbPath) {
     "INSERT INTO ticket_tiers(id, event_id, name, price_cents, capacity, sold) VALUES (?, ?, ?, ?, ?, 0)"
   );
   const stmtGetTier = db.prepare("SELECT * FROM ticket_tiers WHERE id = ?");
+  // CHANGED: also updates `sold`. Before, cancelBooking() asked for { sold } but this
+  // statement ignored it, so cancelled seats were never released.
   const stmtUpdateTier = db.prepare(
-    "UPDATE ticket_tiers SET name = COALESCE(?, name), price_cents = COALESCE(?, price_cents), capacity = COALESCE(?, capacity) WHERE id = ?"
+    "UPDATE ticket_tiers SET name = COALESCE(?, name), price_cents = COALESCE(?, price_cents), capacity = COALESCE(?, capacity), sold = COALESCE(?, sold) WHERE id = ?"
   );
   const stmtListTiers = db.prepare("SELECT * FROM ticket_tiers WHERE event_id = ?");
   const stmtGetBooking = db.prepare("SELECT * FROM bookings WHERE reference = ?");
@@ -122,8 +126,10 @@ export function createSqliteRepository(dbPath) {
   async function updateEvent(id, updates) {
     const row = stmtGetEvent.get(id);
     if (!row) notFound("Event", id);
+    // FIX: orNull() on every optional field (publishEvent only passes { status }).
     stmtUpdateEvent.run(
-      updates.title, updates.city, updates.venue, updates.startsAt, updates.status, id
+      orNull(updates.title), orNull(updates.city), orNull(updates.venue),
+      orNull(updates.startsAt), orNull(updates.status), id
     );
     return eventRowToEvent(stmtGetEvent.get(id));
   }
@@ -185,7 +191,10 @@ export function createSqliteRepository(dbPath) {
   async function updateTier(id, updates) {
     const row = stmtGetTier.get(id);
     if (!row) notFound("Ticket tier", id);
-    stmtUpdateTier.run(updates.name, updates.priceCents, updates.capacity, id);
+    // FIX: orNull() so a partial update such as { sold } no longer crashes with a 500.
+    stmtUpdateTier.run(
+      orNull(updates.name), orNull(updates.priceCents), orNull(updates.capacity), orNull(updates.sold), id
+    );
     return tierRowToTier(stmtGetTier.get(id));
   }
 
@@ -259,7 +268,8 @@ export function createSqliteRepository(dbPath) {
   async function updateBooking(reference, updates) {
     const row = stmtGetBooking.get(reference);
     if (!row) notFound("Booking", reference);
-    stmtUpdateBooking.run(updates.status, updates.cancelledAt, reference);
+    // FIX: payBooking passes only { status }, so cancelledAt was undefined -> 500 on every payment.
+    stmtUpdateBooking.run(orNull(updates.status), orNull(updates.cancelledAt), reference);
     return bookingRowToBooking(stmtGetBooking.get(reference));
   }
 

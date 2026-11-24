@@ -66,6 +66,31 @@ export function createEventService(repository) {
       return repository.updateEvent(eventId, { status: EventStatus.DRAFT });
     },
 
+    async getEventDetail(eventId) {
+      const event = await repository.getEvent(eventId);
+      if (event.status !== EventStatus.PUBLISHED) {
+        throw new DomainError(ErrorCode.NOT_FOUND, `Event not found: ${eventId}`, { Event: eventId });
+      }
+      const tiers = await repository.listTiers(eventId);
+      return {
+        id: event.id,
+        title: event.title,
+        city: event.city,
+        venue: event.venue,
+        startsAt: event.startsAt,
+        status: event.status,
+        tiers: tiers.map((t) => ({
+          id: t.id,
+          eventId: t.eventId,
+          name: t.name,
+          priceCents: t.priceCents,
+          capacity: t.capacity,
+          sold: t.sold,
+          available: t.capacity - t.sold,
+        })),
+      };
+    },
+
     async searchEvents(criteria = {}, sortBy = "date") {
       const summaries = await repository.listEvents({ publishedOnly: true });
       const filtered = filterEvents(summaries, criteria);

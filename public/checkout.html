@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Event Ticketing — Checkout</title>
+    <link rel="stylesheet" href="css/styles.css"/>
+
+  </head>
+  <body>
+    <div class="container">
+      <header class="header">
+        <nav class="nav"><a href="index.html" class="logo">Event Ticketing</a></nav>
+      </header>
+
+      <main>
+        <a href="index.html" class="back-link">← Back to events</a>
+
+        <div id="error" class="message error hidden"></div>
+        <div id="expired" class="message error hidden">
+          Your checkout session has expired. Seats are no longer held.
+        </div>
+        <div id="notFound" class="state hidden">Booking not found.</div>
+
+        <section id="checkout" class="checkout hidden">
+          <h2>Checkout</h2>
+          <div id="booking-summary" class="summary"></div>
+          <div class="countdown" id="countdown"></div>
+
+          <form id="payment-form" novalidate>
+            <div class="card-fields">
+              <div class="field">
+                <label for="card-name">Name on card</label>
+                <input type="text" id="card-name" required placeholder="e.g. Alice Johnson" />
+              </div>
+              <div class="field">
+                <label for="card-number">Card number</label>
+
+              <input
+                type="text"
+                id="card-number"
+                required
+                placeholder="•••• •••• •••• ••••"
+                maxlength="23"
+                inputmode="numeric"
+                autocomplete="cc-number"
+              />
+
+              </div>
+              <div class="field">
+                <label for="card-expiry">Expiry (MM/YY)</label>
+                <input type="text" id="card-expiry" required placeholder="MM/YY" maxlength="5" />
+              </div>
+              <div class="field">
+                <label for="card-cvc">CVV</label>
+                <input type="text" id="card-cvc" required placeholder="•••" maxlength="4" inputmode="numeric"
+                autocomplete="cc-number" />
+              </div>
+            </div>
+            <div class="field" style="margin-top: 0.5rem;">
+              <label>
+                <input type="checkbox" id="simulateDecline" />
+                Simulate a declined card (test retry)
+              </label>
+            </div>
+            <div class="form-actions">
+              <button type="submit" id="payBtn" class="primary">Pay ₦<span id="payAmount">0</span></button>
+              <button type="button" id="cancelBtn">Cancel</button>
+            </div>
+          </form>
+
+          <div id="result" class="message hidden"></div>
+        </section>
+      </main>
+    </div>
+    <script type="module" src="js/pages/checkout.js"></script>
+  </body>
+</html>

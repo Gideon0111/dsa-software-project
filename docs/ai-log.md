@@ -170,3 +170,62 @@
 - **What I asked:** `test/oversell.test.js`: 50 simultaneous bookings for 1 seat give exactly 1 success and 49 `SOLD_OUT`. The test must fail if the fix is removed.
 - **Verification:** Test passes with the fix (200/200 green). Temporarily removed the `AND sold + ? <= capacity` clause → both oversell tests fail (0 successes instead of 1, because all 50 get raw SQLite constraint errors instead of clean `SOLD_OUT`). Fix restored; tests pass again.
 - **Files:** `test/oversell.test.js`.
+
+## Build 6: log
+
+### AI-B6-01: Frontend foundation
+- **What I asked:** Implement the Build 6 frontend (plain HTML/CSS/JS ES modules, no framework) per the Build 6 master prompt.
+- **What came back:** Created the full frontend presentation layer on top of the existing backend.
+- **Files created:**
+  - `public/css/styles.css` — shared responsive styles (cards, tiers, forms, messages, countdown, checkout).
+  - `public/js/ui.js` — `el(tag, props, children)` DOM helper (textContent, never innerHTML) + single `formatCurrency(cents)` helper (whole-integer-cents math, `250000 -> ₦2,500`).
+  - `public/js/mockData.js` — published events with multiple tiers, available and sold-out tiers, multiple cities/prices.
+  - `public/js/api.js` — `listEvents()`, `getEvent(id)`, `createBooking(data)`, `pay(data)` returning promises matching `docs/api-examples.md`. Mock-backed with simulated delay/errors; `USE_MOCK` flag + real `fetch` branch for later swap. Pages never call `fetch` or import mockData.
+  - `public/js/pages/home.js` — event discovery: search, city filter, max price, sort, listing, loading/empty/error states.
+  - `public/js/pages/event.js` — event detail, tiers with prices/remaining capacity, quantity picker (1–10, capped at available), sold-out tiers marked and disabled, booking initiation, navigates to checkout.
+  - `public/js/pages/checkout.js` — checkout with booking summary, countdown seat-hold, mock card form (card details never transmitted/logged), pay, success/decline/retry, expiry, interval cleanup on unload.
+  - `public/checkout.html` — checkout page.
+  - `test/frontend/api.test.js` — mock API tests (list/get/create/pay, sold-out, validation, decline/retry, filter/sort).
+  - `test/frontend/ui.test.js` — `formatCurrency` tests.
+- **Files modified:** `public/index.html` (replaced health-check shell with event-discovery page).
+- **Files left untouched:** `public/app.js` (kept as a standalone health-check utility), all `src/` backend files, all existing `test/` backend tests.
+- **Corrections made during implementation:**
+  - Initialized mock `tierState.sold` from `mockData` sold values (and `resetMockState` restores them) so sold-out tiers in mock data are correctly sold out.
+- **Test results:** `npm test` → 215 pass, 0 fail (200 backend + 15 frontend). All static assets served with HTTP 200.
+- **Corrections made during this fix session:**
+  - Added `sessionStorage` persistence to `api.js` (`SESSION_KEY_BOOKINGS`, `SESSION_KEY_TIER_STATE`, `persistMockState()`) so mock booking/tier state survives page navigation (event page → checkout page). Without this, each new page load resets the in-memory `Map`, causing "booking not found" on checkout and payment decline/retry to fail.
+  - Added `persistMockState()` calls after booking creation and after successful payment in `api.js`.
+  - Added `.catch()` safety nets to `home.js`, `event.js`, and `checkout.js` init calls so the loading spinner always resolves even if a module import or promise fails.
+- **Known limitations:** Build 6 runs on mock data; the real `GET /api/events/:id` detail endpoint and auth (`x-user-id`) arrive in Build 7. Seat hold is a client-side countdown (no server-side expiry yet — Build 8).
+
+### AI-B6-02: Loading and hidden states stayed visible
+- **What I noticed:** The home and event pages could remain covered by a loading spinner, while other elements such as "Event not found" or the checkout panel could appear when they were supposed to be hidden. This made the pages look stuck and show incorrect information instead of the event content.
+- **What was wrong:** The CSS hiding rule was scoped to `.message.hidden`. That selector only hides elements that have both `message` and `hidden` classes. It does not hide elements such as `#loading.state`, `#empty.state`, `#notFound.state`, `#event-detail`, or `#checkout` because those elements do not have the `message` class.
+- **How it was found:** Inspected the class names in `index.html`, `event.html`, and `checkout.html`, then compared them with the CSS selector. The loading and empty-state elements used `hidden` without also being messages.
+- **Fix:** Added one global `.hidden { display: none !important; }` rule in `public/css/styles.css`. The page scripts also hide the loading state in their `finally` blocks, and the home/event initialisation paths have `.catch()` handlers so a rejected load does not leave the spinner on screen.
+- **Why it matters:** Loading, empty, error, and content states are separate UI states. The generic `hidden` utility must work regardless of the element's other classes.
+- **Files:** `public/css/styles.css`, `public/js/pages/home.js`, `public/js/pages/event.js`.
+
+### AI-B6-03: Checkout accepted an empty or invalid card form
+- **What I noticed:** The checkout screen could report a successful mock payment even when the card fields were empty or malformed. That gave the attendee misleading confirmation and meant the form was not checking the information entered before calling the payment function.
+- **What was wrong:** The checkout form uses `novalidate`, which disables the browser's built-in form validation. The submit handler also needed its own validation before calling `pay()`. Without that check, the mock payment flow could proceed without valid-looking input.
+- **How it was found:** Tested the checkout form with missing/invalid card details and observed that the payment flow could reach its success response rather than displaying a field-level error.
+- **Fix:** Added `validateCard()` in `public/js/pages/checkout.js`. It checks that the cardholder name is present, the card number contains 13–19 digits, the expiry is in `MM/YY` format and has not passed, and the CVV contains 3 or 4 digits. `handlePay()` now stops before calling `pay()` when validation fails, displays a helpful message, and focuses the field that needs attention.
+- **Payment-data handling:** The mock form does not send or log the entered card details. The API receives only the booking reference and the `shouldDecline` test flag. The decline checkbox controls the mock decline scenario so the attendee can retry.
+- **Files:** `public/checkout.html`, `public/js/pages/checkout.js`.
+
+### AI-B6-04: Absolute navigation paths broke under Live Server
+- **What I noticed:** Event and checkout navigation could work when the site was served from the backend root but fail when the same files were opened through VS Code Live Server at `/public/index.html`.
+- **What was wrong:** Links such as `/event.html`, `/checkout.html`, and `/` are root-relative. The leading slash tells the browser to resolve the destination from the host's root, not from the current `/public/` directory. Under Live Server, that can point outside the project folder being served.
+- **How it was found:** Compared the URL used to open the frontend (`http://127.0.0.1:5500/public/index.html`) with the destinations produced by the leading-slash links.
+- **Fix:** Changed active frontend navigation to relative paths: `event.html?id=...`, `checkout.html`, and `index.html`. This lets the browser resolve each destination relative to the current frontend directory and works with both the Live Server `/public/` path and the backend's static serving of `public/`.
+- **Files:** `public/js/pages/home.js`, `public/js/pages/event.js`, `public/js/pages/checkout.js`, and the navigation links in the HTML pages.
+
+### AI-B6-05: Seeded backend data and frontend mock data were mistaken for one dataset
+- **What I noticed:** The frontend displayed the six Build 6 sample events on Live Server, while the backend at `localhost:3000` initially returned only the Last Seat Demo event. This looked like missing frontend data, but the two pages were reading from different data sources.
+- **What was wrong:** `public/js/mockData.js` supplies the frontend mock mode. The Node backend reads persistent records from `data/ticketing.sqlite`. Having events in the frontend mock file does not automatically insert them into SQLite.
+- **How it was found:** Inspected `public/js/api.js`, `scripts/seed.js`, and the SQLite database. The seed script already imported the frontend sample events, but it had not yet been run against the database included with the project.
+- **Fix:** Ran `npm run seed` from the project root. The seed script inserted the six sample events and their ticket tiers into SQLite. This populated the backend dataset without requiring the frontend to combine mock data and database records at runtime.
+- **Verification:** After running the seed command, I confirmed that seeding worked. The project test suite was also run against the uploaded project copy: `npm test` reported 215 passing tests and 0 failures.
+- **Architecture note:** Build 6's course requirement is to practise the frontend using mock data. The automatic real-backend mode is an additional integration in this build. Clear distinction: mock mode reads `mockData.js`; real mode reads the SQLite-backed API.
+- **Files reviewed:** `public/js/api.js`, `public/js/mockData.js`, `scripts/seed.js`, `data/ticketing.sqlite`.

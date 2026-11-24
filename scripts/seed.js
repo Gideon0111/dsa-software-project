@@ -1,4 +1,6 @@
 import { createConnection, applySchema, DEFAULT_DB_PATH } from "../src/db/connection.js";
+//Reuse the frontend's mock events so the real database has the same events
+import { events as mockEvents } from "../public/js/mockData.js";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -40,6 +42,21 @@ function main() {
   } else {
     console.log(`Database already seeded at ${SEED_DB_PATH}; skipping.`);
   }
+  // NEW: seed the six sample events (idempotent: skips any that already exist).
+  const insertEvent = db.prepare(
+    "INSERT INTO events(id, title, city, venue, starts_at, status, tier_ids) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  );
+  const insertTier = db.prepare(
+    "INSERT INTO ticket_tiers(id, event_id, name, price_cents, capacity, sold) VALUES (?, ?, ?, ?, ?, ?)"
+  );
+  let added = 0;
+  for (const e of mockEvents) {
+    if (db.prepare("SELECT id FROM events WHERE id = ?").get(e.id)) continue;
+    insertEvent.run(e.id, e.title, e.city, e.venue, e.startsAt, e.status, JSON.stringify(e.tiers.map((t) => t.id)));
+    for (const t of e.tiers) insertTier.run(t.id, e.id, t.name, t.priceCents, t.capacity, t.sold);
+    added++;
+  }
+  console.log(added > 0 ? `Seeded ${added} sample event(s).` : "Sample events already present; skipping.");
 
   db.close();
 }
