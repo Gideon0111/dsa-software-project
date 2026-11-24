@@ -5,9 +5,9 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-//The database lives on disk (default: ./data/ticketing.sqlite) so data survives a server restart
-
-const DEFAULT_DB_PATH = path.resolve(process.cwd(), "data", "ticketing.sqlite");
+// CHANGED: anchored to the project folder (not process.cwd()), so `npm start` and
+// `npm run seed` always use the SAME database file wherever the command is run from.
+const DEFAULT_DB_PATH = path.resolve(__dirname, "..", "..", "data", "ticketing.sqlite");
 
 export function resolveDbPath(dbPath) {
   return dbPath || process.env.TICKETING_DB_PATH || DEFAULT_DB_PATH;
@@ -26,8 +26,6 @@ export function openDatabase(dbPath) {
 
   return db;
 }
-
-// Apply schema.sql against an open database. Idempotent (uses IF NOT EXISTS).
 
 export function applySchema(db, schemaSql) {
 
@@ -48,7 +46,6 @@ export function applySchema(db, schemaSql) {
     db.exec(statement);
   }
 }
-
 //Open the default database and apply the schema. Convenience entry point used by the repository and the seed script.
 export function createConnection(dbPath) {
   const db = openDatabase(dbPath);

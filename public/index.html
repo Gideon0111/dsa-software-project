@@ -3,11 +3,53 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Event Ticketing</title>
+    <title>Event Ticketing — Browse Events</title>
+    <link rel="stylesheet" href="css/styles.css"/>
   </head>
   <body>
-    <h1>Event Ticketing</h1>
-    <p id="status">Checking the server...</p>
-    <script type="module" src="/app.js"></script>
+    <div class="container">
+      <header class="header">
+        <nav class="nav">
+          <a href="index.html" class="logo">Event Ticketing</a>
+        </nav>
+      </header>
+
+      <main>
+        <h1>Find an Event</h1>
+        <div id="error" class="message error hidden"></div>
+
+        <div class="filters" id="filters">
+          <div class="field">
+            <label for="search">Search by title or venue</label>
+            <input type="search" id="search" placeholder="e.g. jazz, Lagos" />
+          </div>
+          <div class="field">
+            <label for="city">City</label>
+            <select id="city"><option value="">All cities</option></select>
+          </div>
+          <div class="field">
+            <label for="maxPrice">Max price (₦)</label>
+            <input type="number" id="maxPrice" placeholder="e.g. 5000" min="0" />
+          </div>
+          <div class="field">
+            <label for="sortBy">Sort by</label>
+            <select id="sortBy">
+              <option value="date">Date (earliest first)</option>
+              <option value="price">Price (cheapest first)</option>
+              <option value="availability">Most tickets left</option>
+            </select>
+          </div>
+          <button type="button" id="applyFilters" class="primary">Apply filters</button>
+        </div>
+
+        <div id="loading" class="state">
+          <div class="spinner"></div>
+          <p>Loading events…</p>
+        </div>
+        <div id="empty" class="state hidden">No events match your filters.</div>
+        <section id="events" class="events-grid" aria-label="Event listings"></section>
+      </main>
+    </div>
+    <script type="module" src="js/pages/home.js"></script>
   </body>
 </html>

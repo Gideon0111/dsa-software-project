@@ -16,7 +16,8 @@
     "seed": "node scripts/seed.js",
     "oversell": "node scripts/oversell-demo.js",
     "test": "node --test \"test/**/*.test.js\"",
-    "coverage": "node --test --experimental-test-coverage"
+    "coverage": "node --test --experimental-test-coverage",
+    "dev": "node --watch src/server.js"
   },
   "keywords": [],
   "author": "",

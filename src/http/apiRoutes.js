@@ -1,10 +1,5 @@
 import { authenticate } from "../lib/auth.js";
 
-/**
- * Registers all Build 4 REST API routes on the router.
- * Every handler returns { status?, body? } or throws; app.js turns errors into
- * the standard {"error":{"code","message"}} JSON shape.
- */
 export function registerApiRoutes(router, eventService, bookingService) {
   // ── Events ──
   router.post("/api/events", async ({ req, body }) => {
@@ -42,6 +37,12 @@ export function registerApiRoutes(router, eventService, bookingService) {
     const sortBy = query.get("sortBy") || "date";
     const events = await eventService.searchEvents(criteria, sortBy);
     return { status: 200, body: { events } };
+  });
+
+  // NEW: single event with its tiers (the frontend's getEvent() calls this).
+  router.get("/api/events/:id", async ({ params }) => {
+    const event = await eventService.getEventDetail(params.id);
+    return { status: 200, body: { event } };
   });
 
   // ── Bookings ──
