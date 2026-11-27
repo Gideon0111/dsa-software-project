@@ -30,7 +30,7 @@ describe("Build 4 API", () => {
     test("creates a draft event and returns it", async () => {
       const res = await json("/api/events", {
         method: "POST",
-        headers: authHeaders("user-1"),
+        headers: authHeaders("user-1", "organizer"),
         body: {
           title: "Harbour Rock Night",
           city: "Lagos",
@@ -47,7 +47,7 @@ describe("Build 4 API", () => {
     test("rejects missing title with VALIDATION", async () => {
       const res = await json("/api/events", {
         method: "POST",
-        headers: authHeaders("user-1"),
+        headers: authHeaders("user-1", "organizer"),
         body: { city: "Lagos", venue: "Hall", startsAt: "2027-03-20T19:00:00Z" },
       });
       assert.equal(res.status, 400);
@@ -57,7 +57,7 @@ describe("Build 4 API", () => {
     test("rejects an impossible date with VALIDATION", async () => {
       const res = await json("/api/events", {
         method: "POST",
-        headers: authHeaders("user-1"),
+        headers: authHeaders("user-1", "organizer"),
         body: {
           title: "Ghost",
           city: "Lagos",
@@ -69,7 +69,7 @@ describe("Build 4 API", () => {
       assert.equal(res.body.error.code, "VALIDATION");
     });
 
-    test("requires x-user-id header", async () => {
+    test("requires Authorization bearer header", async () => {
       const res = await json("/api/events", {
         method: "POST",
         body: {
@@ -79,8 +79,8 @@ describe("Build 4 API", () => {
           startsAt: "2027-03-20T19:00:00Z",
         },
       });
-      assert.equal(res.status, 400);
-      assert.equal(res.body.error.code, "VALIDATION");
+      assert.equal(res.status, 401);
+      assert.equal(res.body.error.code, "UNAUTHENTICATED");
     });
   });
 
@@ -94,7 +94,7 @@ describe("Build 4 API", () => {
       });
       const res = await json(`/api/events/${event.id}/tiers`, {
         method: "POST",
-        headers: authHeaders("user-1"),
+        headers: authHeaders("user-1", "organizer"),
         body: { name: "General", priceCents: 500000, capacity: 5 },
       });
       assert.equal(res.status, 201);
@@ -107,7 +107,7 @@ describe("Build 4 API", () => {
     test("rejects a tier for an unknown event", async () => {
       const res = await json("/api/events/nope/tiers", {
         method: "POST",
-        headers: authHeaders("user-1"),
+        headers: authHeaders("user-1", "organizer"),
         body: { name: "X", priceCents: 100, capacity: 5 },
       });
       assert.equal(res.status, 404);
@@ -122,7 +122,7 @@ describe("Build 4 API", () => {
       await seedTier(json, "user-1", event.id, { name: "General" });
       const res = await json(`/api/events/${event.id}/tiers`, {
         method: "POST",
-        headers: authHeaders("user-1"),
+        headers: authHeaders("user-1", "organizer"),
         body: { name: "general", priceCents: 200, capacity: 5 },
       });
       assert.equal(res.status, 409);
@@ -148,7 +148,7 @@ describe("Build 4 API", () => {
       });
       const res = await json(`/api/events/${event.id}/publish`, {
         method: "POST",
-        headers: authHeaders("user-1"),
+        headers: authHeaders("user-1", "organizer"),
       });
       assert.equal(res.status, 409);
       assert.equal(res.body.error.code, "INVALID_STATE");
@@ -161,7 +161,7 @@ describe("Build 4 API", () => {
       });
       const res = await json(`/api/events/${event.id}/publish`, {
         method: "POST",
-        headers: authHeaders("user-1"),
+        headers: authHeaders("user-1", "organizer"),
       });
       assert.equal(res.status, 409);
       assert.equal(res.body.error.code, "INVALID_STATE");
@@ -178,7 +178,7 @@ describe("Build 4 API", () => {
       });
       const res = await json(`/api/events/${event.id}/unpublish`, {
         method: "POST",
-        headers: authHeaders("user-1"),
+        headers: authHeaders("user-1", "organizer"),
       });
       assert.equal(res.status, 200);
       assert.equal(res.body.event.status, "DRAFT");
@@ -191,11 +191,11 @@ describe("Build 4 API", () => {
       });
       await json(`/api/events/${event.id}/unpublish`, {
         method: "POST",
-        headers: authHeaders("user-1"),
+        headers: authHeaders("user-1", "organizer"),
       });
       const res = await json(`/api/events/${event.id}/unpublish`, {
         method: "POST",
-        headers: authHeaders("user-1"),
+        headers: authHeaders("user-1", "organizer"),
       });
       assert.equal(res.status, 409);
       assert.equal(res.body.error.code, "INVALID_STATE");
@@ -419,8 +419,8 @@ describe("Build 4 API", () => {
         headers: authHeaders("user-1"),
         body: {},
       });
-      assert.equal(res.status, 409);
-      assert.equal(res.body.error.code, "INVALID_TRANSITION");
+      assert.equal(res.status, 404);
+      assert.equal(res.body.error.code, "NOT_FOUND");
     });
 
     test("rejects paying a cancelled booking with INVALID_TRANSITION", async () => {

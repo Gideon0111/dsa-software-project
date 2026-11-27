@@ -7,4 +7,4 @@ data/
 .DS_Store
 coverage/
 # Private AI agent documentation
-docs/AGENT_CONTEXT.md
+docs/AGENT_CONTEXT.md.env

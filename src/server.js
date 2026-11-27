@@ -4,8 +4,10 @@ import { createSqliteRepository } from "./repositories/sqlite.js";
 import { DEFAULT_DB_PATH } from "./db/connection.js";
 import { createEventService } from "./services/eventService.js";
 import { createBookingService } from "./services/bookingService.js";
+import { createAuthService } from "./services/authService.js";
 import { charge } from "./lib/mockPaymentGateway.js";
 import { registerApiRoutes } from "./http/apiRoutes.js";
+import { registerAuthRoutes } from "./http/authRoutes.js";
 
 let config;
 try {
@@ -15,14 +17,25 @@ try {
   process.exit(1);
 }
 
+// Fail fast if the token signing secret is not configured. Without it,
+// every token is forgeable, so the server must not start.
+if (!process.env.TOKEN_SECRET || process.env.TOKEN_SECRET.length < 16) {
+  console.error(
+    "TOKEN_SECRET: must be set to at least 16 characters before starting the server"
+  );
+  process.exit(1);
+}
+
 const repository = createSqliteRepository(process.env.TICKETING_DB_PATH || DEFAULT_DB_PATH);
 const eventService = createEventService(repository);
 const bookingService = createBookingService(repository, { charge });
+const authService = createAuthService(repository);
 
 const server = createApp({
   publicDir: config.publicDir,
   maxBodyBytes: config.maxBodyBytes,
   registerRoutes(router) {
+    registerAuthRoutes(router, authService);
     registerApiRoutes(router, eventService, bookingService);
   },
 });

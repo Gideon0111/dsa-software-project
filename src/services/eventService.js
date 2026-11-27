@@ -6,7 +6,7 @@ import { EventStatus } from "../domain/inventory.js";
 
 export function createEventService(repository) {
   return {
-    async createEvent({ title, city, venue, startsAt }) {
+    async createEvent({ title, city, venue, startsAt, organizerId }) {
       const t = requireText(title, "title");
       const c = requireText(city, "city");
       const v = requireText(venue, "venue");
@@ -23,30 +23,50 @@ export function createEventService(repository) {
         city: c,
         venue: v,
         startsAt: startsAtIso,
+        organizerId,
       });
     },
 
-    async addTier(eventId, { name, priceCents, capacity }) {
+    async addTier(eventId, { name, priceCents, capacity }, organizerId) {
       const tierName = requireText(name, "name");
       const price = requireInteger(priceCents, "priceCents", { min: 0 });
       const seats = requireInteger(capacity, "capacity", { min: 1 });
 
       const event = await repository.getEvent(eventId);
+
+      // Ownership check: only the event's organizer may add tiers.
+      if (event.organizerId !== undefined && event.organizerId !== organizerId) {
+        throw new DomainError(
+          ErrorCode.FORBIDDEN,
+          `You can only add tiers to your own events`,
+          { eventId },
+        );
+      }
+
       const existingTiers = await repository.listTiers(eventId);
       const clash = existingTiers.some((t) => t.name.toLowerCase() === tierName.toLowerCase());
       if (clash) {
         throw new DomainError(
           ErrorCode.CONFLICT,
           `This event already has a tier named "${tierName}"`,
-          { eventId }
+          { eventId },
         );
       }
 
       return repository.createTier(eventId, { name: tierName, priceCents: price, capacity: seats });
     },
 
-    async publishEvent(eventId) {
+    async publishEvent(eventId, organizerId) {
       const event = await repository.getEvent(eventId);
+
+      if (event.organizerId !== undefined && event.organizerId !== organizerId) {
+        throw new DomainError(
+          ErrorCode.FORBIDDEN,
+          `You can only publish your own events`,
+          { eventId },
+        );
+      }
+
       if (event.status === EventStatus.PUBLISHED) {
         throw new DomainError(ErrorCode.INVALID_STATE, `Event "${eventId}" is already published`);
       }
@@ -57,8 +77,17 @@ export function createEventService(repository) {
       return repository.updateEvent(eventId, { status: EventStatus.PUBLISHED });
     },
 
-    async unpublishEvent(eventId) {
+    async unpublishEvent(eventId, organizerId) {
       const event = await repository.getEvent(eventId);
+
+      if (event.organizerId !== undefined && event.organizerId !== organizerId) {
+        throw new DomainError(
+          ErrorCode.FORBIDDEN,
+          `You can only unpublish your own events`,
+          { eventId },
+        );
+      }
+
       if (event.status === EventStatus.DRAFT) {
         throw new DomainError(ErrorCode.INVALID_STATE, `Event "${eventId}" is already a draft`);
       }

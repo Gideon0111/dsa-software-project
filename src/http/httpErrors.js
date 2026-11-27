@@ -51,6 +51,10 @@ export const DOMAIN_STATUS = Object.freeze({
   [ErrorCode.INVALID_STATE]: 409,
   [ErrorCode.INVALID_TRANSITION]: 409,
   [ErrorCode.PAYMENT_DECLINED]: 402,
+  [ErrorCode.UNAUTHENTICATED]: 401,
+  [ErrorCode.FORBIDDEN]: 403,
+  [ErrorCode.EMAIL_TAKEN]: 409,
+  [ErrorCode.INVALID_CREDENTIALS]: 401,
 });
 
 const errorBody = (code, message) => ({ error: { code, message } });

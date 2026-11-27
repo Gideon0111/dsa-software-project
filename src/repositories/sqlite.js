@@ -29,6 +29,7 @@ function eventRowToEvent(row) {
     startsAt: row.starts_at,
     status: row.status,
     tierIds: JSON.parse(row.tier_ids || "[]"),
+    organizerId: row.organizer_id ?? undefined,
   };
 }
 
@@ -57,6 +58,15 @@ function bookingRowToBooking(row) {
     userId: row.user_id,
     createdAt: row.created_at,
     cancelledAt: row.cancelled_at,
+  };
+}
+
+function userRowToUser(row) {
+  return {
+    id: row.id,
+    email: row.email,
+    passwordHash: row.password_hash,
+    role: row.role,
   };
 }
 
@@ -98,12 +108,21 @@ export function createSqliteRepository(dbPath) {
   const stmtAppendTierId = db.prepare(
     "UPDATE events SET tier_ids = json_insert(tier_ids, '$[#]', ?) WHERE id = ?"
   );
+  const stmtCreateUser = db.prepare(
+    "INSERT INTO users(id, email, password_hash, role) VALUES (?, ?, ?, ?)"
+  );
+  const stmtGetUserByEmail = db.prepare(
+    "SELECT * FROM users WHERE email = ?"
+  );
+  const stmtGetUserById = db.prepare(
+    "SELECT * FROM users WHERE id = ?"
+  );
 
   function close() {
     db.close();
   }
 
-  async function createEvent({ title, city, venue, startsAt }) {
+  async function createEvent({ title, city, venue, startsAt, organizerId }) {
     const id = newId();
     stmtCreateEvent.run(
       id,
@@ -126,7 +145,7 @@ export function createSqliteRepository(dbPath) {
   async function updateEvent(id, updates) {
     const row = stmtGetEvent.get(id);
     if (!row) notFound("Event", id);
-    // FIX: orNull() on every optional field (publishEvent only passes { status }).
+
     stmtUpdateEvent.run(
       orNull(updates.title), orNull(updates.city), orNull(updates.venue),
       orNull(updates.startsAt), orNull(updates.status), id
@@ -191,7 +210,7 @@ export function createSqliteRepository(dbPath) {
   async function updateTier(id, updates) {
     const row = stmtGetTier.get(id);
     if (!row) notFound("Ticket tier", id);
-    // FIX: orNull() so a partial update such as { sold } no longer crashes with a 500.
+
     stmtUpdateTier.run(
       orNull(updates.name), orNull(updates.priceCents), orNull(updates.capacity), orNull(updates.sold), id
     );
@@ -268,9 +287,35 @@ export function createSqliteRepository(dbPath) {
   async function updateBooking(reference, updates) {
     const row = stmtGetBooking.get(reference);
     if (!row) notFound("Booking", reference);
-    // FIX: payBooking passes only { status }, so cancelledAt was undefined -> 500 on every payment.
+  
     stmtUpdateBooking.run(orNull(updates.status), orNull(updates.cancelledAt), reference);
     return bookingRowToBooking(stmtGetBooking.get(reference));
+  }
+
+  async function createUser({ email, passwordHash, role }) {
+    const existing = stmtGetUserByEmail.get(email);
+    if (existing) {
+      throw new DomainError(
+        ErrorCode.EMAIL_TAKEN,
+        `An account with email "${email}" already exists`,
+        { email }
+      );
+    }
+    const id = newId();
+    stmtCreateUser.run(id, email, passwordHash, role);
+    return userRowToUser(stmtGetUserById.get(id));
+  }
+
+  async function getUserByEmail(email) {
+    const row = stmtGetUserByEmail.get(email);
+    if (!row) return null;
+    return userRowToUser(row);
+  }
+
+  async function getUserById(id) {
+    const row = stmtGetUserById.get(id);
+    if (!row) return null;
+    return userRowToUser(row);
   }
 
   async function peekWaitlist(tierId) {
@@ -292,6 +337,9 @@ export function createSqliteRepository(dbPath) {
     createBooking,
     getBooking,
     updateBooking,
+    createUser,
+    getUserByEmail,
+    getUserById,
     peekWaitlist,
     close,
   });

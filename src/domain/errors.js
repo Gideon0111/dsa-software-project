@@ -6,6 +6,10 @@ export const ErrorCode = Object.freeze({
   INVALID_STATE: "INVALID_STATE",
   INVALID_TRANSITION: "INVALID_TRANSITION", // a booking was asked to make a move the state machine does not allow
   PAYMENT_DECLINED: "PAYMENT_DECLINED", // the mock payment card was declined
+  UNAUTHENTICATED: "UNAUTHENTICATED", // missing, invalid, expired, or malformed token
+  FORBIDDEN: "FORBIDDEN", // authenticated but not allowed to perform this action
+  EMAIL_TAKEN: "EMAIL_TAKEN", // email address is already registered
+  INVALID_CREDENTIALS: "INVALID_CREDENTIALS", // email or password is incorrect
 });
 
 export class DomainError extends Error {

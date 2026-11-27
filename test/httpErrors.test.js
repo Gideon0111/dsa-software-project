@@ -101,6 +101,10 @@ describe("domain code -> HTTP status table", () => {
       INVALID_STATE: 409,
       INVALID_TRANSITION: 409,
       PAYMENT_DECLINED: 402,
+      UNAUTHENTICATED: 401,
+      FORBIDDEN: 403,
+      EMAIL_TAKEN: 409,
+      INVALID_CREDENTIALS: 401,
     });
   });
 });

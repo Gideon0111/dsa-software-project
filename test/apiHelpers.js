@@ -3,12 +3,39 @@ import { createApp } from "../src/http/app.js";
 import { createMemoryRepository } from "../src/repositories/memory.js";
 import { createEventService } from "../src/services/eventService.js";
 import { createBookingService } from "../src/services/bookingService.js";
+import { createAuthService } from "../src/services/authService.js";
 import { charge } from "../src/lib/mockPaymentGateway.js";
 import { registerApiRoutes } from "../src/http/apiRoutes.js";
+import { registerAuthRoutes } from "../src/http/authRoutes.js";
+import { signToken } from "../src/lib/token.js";
 
-/** Build the standard "x-user-id" authentication header for a user id. */
-export function authHeaders(userId) {
-  return { "x-user-id": String(userId) };
+const TOKEN_SECRET = "test-secret-at-least-16-chars";
+
+/**
+ * Build a bearer-token authorization header for a user.
+ * Generates a signed HS256 JWT with the given user id and role.
+ */
+export function authHeaders(userId, role = "attendee") {
+  if (!process.env.TOKEN_SECRET) {
+    process.env.TOKEN_SECRET = TOKEN_SECRET;
+  }
+  const token = signToken({ userId: String(userId), role });
+  return { Authorization: `Bearer ${token}` };
+}
+
+/** Build an unauthorized header (no token). */
+export function noAuthHeaders() {
+  return {};
+}
+
+/** Build a bearer-token header with an invalid token. */
+export function badAuthHeaders() {
+  return { Authorization: "Bearer invalid-token" };
+}
+
+/** Build a bearer-token header with a valid token but wrong role. */
+export function authHeadersAs(role) {
+  return authHeaders("user-wrong-role", role);
 }
 
 /** Low-level HTTP request against the running test server. */
@@ -51,11 +78,13 @@ export async function startTestServer() {
   const repository = createMemoryRepository();
   const eventService = createEventService(repository);
   const bookingService = createBookingService(repository, { charge });
+  const authService = createAuthService(repository);
 
   const app = createApp({
     publicDir: "/tmp",
     maxBodyBytes: 1000,
     registerRoutes(router) {
+      registerAuthRoutes(router, authService);
       registerApiRoutes(router, eventService, bookingService);
     },
   });
@@ -75,17 +104,12 @@ export async function startTestServer() {
   };
 }
 
-/* ──────────────────────────────────────────────────────────────
- * Fixtures: each helper creates fresh, independent API resources
- * through real HTTP calls so every test owns its own data.
- * ───────────────────────────────────────────────────────────── */
-
 const DEFAULT_STARTS_AT = "2027-01-01T19:00:00Z";
 
 export async function seedEvent(json, userId, overrides = {}) {
   const res = await json("/api/events", {
     method: "POST",
-    headers: authHeaders(userId),
+    headers: authHeaders(userId, "organizer"),
     body: {
       title: "Untitled Event",
       city: "Lagos",
@@ -100,7 +124,7 @@ export async function seedEvent(json, userId, overrides = {}) {
 export async function seedTier(json, userId, eventId, overrides = {}) {
   const res = await json(`/api/events/${eventId}/tiers`, {
     method: "POST",
-    headers: authHeaders(userId),
+    headers: authHeaders(userId, "organizer"),
     body: {
       name: "General",
       priceCents: 1000,
@@ -116,7 +140,7 @@ export async function seedPublishedEvent(json, userId, { tier: tierOverrides, ..
   const tier = await seedTier(json, userId, event.id, tierOverrides);
   const publishRes = await json(`/api/events/${event.id}/publish`, {
     method: "POST",
-    headers: authHeaders(userId),
+    headers: authHeaders(userId, "organizer"),
   });
   return { event: publishRes.body.event, tier };
 }
